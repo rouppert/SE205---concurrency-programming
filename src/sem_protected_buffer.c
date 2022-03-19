@@ -24,10 +24,8 @@ protected_buffer_t * sem_protected_buffer_init(int length) {
   sem_unlink (EMPTY_SLOTS_NAME);
   sem_unlink (FULL_SLOTS_NAME);
   // Open the semaphores using the filenames above
-  b->empty_slots_sem = (sem_t*)malloc(sizeof(sem_t));
-  b->full_slots_sem = (sem_t*)malloc(sizeof(sem_t));
-  b->empty_slots_sem = sem_open(EMPTY_SLOTS_NAME, b->buffer->max_size);
-  b->full_slots_sem = sem_open(FULL_SLOTS_NAME, 0);
+  b->empty_slots_sem = sem_open(EMPTY_SLOTS_NAME, O_CREAT, 0644, b->buffer->max_size);
+  b->full_slots_sem = sem_open(FULL_SLOTS_NAME, O_CREAT, 0644, 0);
   return b;
 }
 
@@ -37,7 +35,7 @@ void * sem_protected_buffer_get(protected_buffer_t * b){
   void * d;
   
   // Enforce synchronisation semantics using semaphores.
-  while (sem_post(b->full_slots_sem)!=0) {};
+  while (sem_wait(b->full_slots_sem)!=0) {};
   // Enter mutual exclusion.
   pthread_mutex_lock(b->m);
   d = circular_buffer_get(b->buffer);
@@ -46,7 +44,7 @@ void * sem_protected_buffer_get(protected_buffer_t * b){
   // Leave mutual exclusion.
   pthread_mutex_unlock(b->m);
   // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->empty_slots_sem);
+  sem_post(b->empty_slots_sem);
   return d;
 }
 
@@ -55,7 +53,7 @@ void * sem_protected_buffer_get(protected_buffer_t * b){
 void sem_protected_buffer_put(protected_buffer_t * b, void * d){
 
   // Enforce synchronisation semantics using semaphores.
-  while(sem_post(b->empty_slots_sem)!=0) {};
+  while(sem_wait(b->empty_slots_sem)!=0) {};
   // Enter mutual exclusion.
   pthread_mutex_lock(b->m);
   circular_buffer_put(b->buffer, d);
@@ -64,7 +62,7 @@ void sem_protected_buffer_put(protected_buffer_t * b, void * d){
   // Leave mutual exclusion.
   pthread_mutex_unlock(b->m);
   // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->full_slots_sem);
+  sem_post(b->full_slots_sem);
 }
 
 // Extract an element from buffer. If the attempted operation is not
