@@ -125,10 +125,8 @@ void * sem_protected_buffer_poll(protected_buffer_t * b, struct timespec *abstim
   int    rc = -1;
   
   // Enforce synchronisation semantics using semaphores.
-  while (rc!=0) {
-    rc = sem_post(b->full_slots_sem);
-  }
-
+  
+  rc = sem_timedwait(b->full_slots_sem, abstime);
   if (rc != 0) {
     print_task_activity ("poll", d);
     return d;
@@ -142,7 +140,7 @@ void * sem_protected_buffer_poll(protected_buffer_t * b, struct timespec *abstim
   // Leave mutual exclusion.
   pthread_mutex_unlock(b->m);
   // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->empty_slots_sem);
+  sem_post(b->empty_slots_sem);
   return d;
 }
 
@@ -154,10 +152,7 @@ int sem_protected_buffer_offer(protected_buffer_t * b, void * d, struct timespec
   int rc = -1;
   
   // Enforce synchronisation semantics using semaphores.
-  while (rc!=0) {
-    rc = sem_post(b->full_slots_sem);
-  }
-
+  rc = sem_timedwait(b->empty_slots_sem, abstime);
   if (rc != 0) {
     d = NULL;
     print_task_activity ("offer", d);
@@ -172,7 +167,7 @@ int sem_protected_buffer_offer(protected_buffer_t * b, void * d, struct timespec
   // Leave mutual exclusion.
   pthread_mutex_unlock(b->m);
   // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->empty_slots_sem);
+  sem_post(b->full_slots_sem);
   return 1;
 }
 
