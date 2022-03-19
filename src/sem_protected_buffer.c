@@ -35,7 +35,7 @@ void * sem_protected_buffer_get(protected_buffer_t * b){
   void * d;
   
   // Enforce synchronisation semantics using semaphores.
-  while (sem_wait(b->full_slots_sem)!=0) {};
+  sem_wait(b->full_slots_sem);
   // Enter mutual exclusion.
   pthread_mutex_lock(b->m);
   d = circular_buffer_get(b->buffer);
@@ -53,7 +53,7 @@ void * sem_protected_buffer_get(protected_buffer_t * b){
 void sem_protected_buffer_put(protected_buffer_t * b, void * d){
 
   // Enforce synchronisation semantics using semaphores.
-  while(sem_wait(b->empty_slots_sem)!=0) {};
+  sem_wait(b->empty_slots_sem);
   // Enter mutual exclusion.
   pthread_mutex_lock(b->m);
   circular_buffer_put(b->buffer, d);
@@ -72,22 +72,23 @@ void * sem_protected_buffer_remove(protected_buffer_t * b){
   int    rc = -1;
   
   // Enforce synchronisation semantics using semaphores.
-  rc = sem_post(b->full_slots_sem);
+  rc = sem_trywait(b->full_slots_sem);
   if (rc != 0) {
     print_task_activity ("remove", d);
     return d;
   }
+  else {
+    // Enter mutual exclusion.
+    pthread_mutex_lock(b->m);
+    d = circular_buffer_get(b->buffer);
+    print_task_activity ("remove", d);
 
-  // Enter mutual exclusion.
-  pthread_mutex_lock(b->m);
-  d = circular_buffer_get(b->buffer);
-  print_task_activity ("remove", d);
-
-  // Leave mutual exclusion.
-  pthread_mutex_unlock(b->m);
-  // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->empty_slots_sem);
-  return d;
+    // Leave mutual exclusion.
+    pthread_mutex_unlock(b->m);
+    // Enforce synchronisation semantics using semaphores.
+    sem_post(b->empty_slots_sem);
+    return d;
+  }
 }
 
 // Insert an element into buffer. If the attempted operation is
@@ -96,22 +97,23 @@ int sem_protected_buffer_add(protected_buffer_t * b, void * d){
   int rc = -1;
   
   // Enforce synchronisation semantics using semaphores.
-  rc = sem_post(b->empty_slots_sem);
+  rc = sem_trywait(b->empty_slots_sem);
   if (rc != 0) {
     print_task_activity ("add", NULL);
     return 0;
   }
-
-  // Enter mutual exclusion.
-  pthread_mutex_lock(b->m);
-  circular_buffer_put(b->buffer, d);
-  print_task_activity ("add", d);
-  
-  // Leave mutual exclusion.
-  pthread_mutex_unlock(b->m);
-  // Enforce synchronisation semantics using semaphores.
-  sem_wait(b->full_slots_sem);
-  return 1;
+  else {
+    // Enter mutual exclusion.
+    pthread_mutex_lock(b->m);
+    circular_buffer_put(b->buffer, d);
+    print_task_activity ("add", d);
+    
+    // Leave mutual exclusion.
+    pthread_mutex_unlock(b->m);
+    // Enforce synchronisation semantics using semaphores.
+    sem_post(b->full_slots_sem);
+    return 1;
+  }
 }
 
 // Extract an element from buffer. If the attempted operation is not
